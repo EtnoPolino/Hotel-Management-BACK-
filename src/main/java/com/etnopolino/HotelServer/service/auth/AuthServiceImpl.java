@@ -23,6 +23,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Transactional // forced to used transactional or else we cant enable our customer when the email is sent by email
 public class AuthServiceImpl implements AuthService{
 
     private final UserRepository userRepository;
@@ -71,14 +72,19 @@ public class AuthServiceImpl implements AuthService{
 
         mailService.sendMail(new NotificationEmail("Please Activate your Account", user.getEmail(), "Thank you for signing up to our Hotel, " +
                                                                                                     "Please click on the below url to activate your account : " +
-                                                                                                    "http://localhost:8080/api/auth/accountVerification/"+token ));
+                                                                                                    "http://localhost:8080/api/auth/accountVerification/"+token));
 
     }
-
+    @Override
     public void VerifyAccount(String token){
         Optional<VerificationToken> verificationToken = verificationTokenRepository.findByToken(token);
         verificationToken.orElseThrow( () -> new SpringHotelException("Invalid Token"));
         fetchUserAndEnable(verificationToken.get());
+    }
+
+    @Override
+    public boolean hasEmailWithEmail(String email) {
+        return userRepository.findFirstByEmail(email).isPresent();
     }
 
     private String generateVerifyToken(User user) {
