@@ -1,5 +1,7 @@
 package com.etnopolino.HotelServer.controller.auth;
 
+import com.etnopolino.HotelServer.dto.AuthenticateResponse;
+import com.etnopolino.HotelServer.dto.LoginRequest;
 import com.etnopolino.HotelServer.dto.SignupRequest;
 import com.etnopolino.HotelServer.service.auth.AuthService;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,11 @@ public class AuthController {
     public ResponseEntity<String> verifyAccount(@PathVariable String token){
         authService.VerifyAccount(token);
         return new ResponseEntity<>("Account Activated Successfully", HttpStatus.OK);
+    }
+
+    @PostMapping("/login")
+    public AuthenticateResponse login(@RequestBody LoginRequest loginRequest){
+        return authService.login(loginRequest);
     }
 
 }

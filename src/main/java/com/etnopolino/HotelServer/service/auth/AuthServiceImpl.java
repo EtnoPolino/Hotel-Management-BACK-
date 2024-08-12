@@ -1,5 +1,7 @@
 package com.etnopolino.HotelServer.service.auth;
 
+import com.etnopolino.HotelServer.dto.AuthenticateResponse;
+import com.etnopolino.HotelServer.dto.LoginRequest;
 import com.etnopolino.HotelServer.dto.SignupRequest;
 import com.etnopolino.HotelServer.entity.NotificationEmail;
 import com.etnopolino.HotelServer.entity.User;
@@ -8,10 +10,16 @@ import com.etnopolino.HotelServer.enums.UserRole;
 import com.etnopolino.HotelServer.exceptions.SpringHotelException;
 import com.etnopolino.HotelServer.repositories.UserRepository;
 import com.etnopolino.HotelServer.repositories.VerificationTokenRepository;
+import com.etnopolino.HotelServer.securityUtils.JwtProvider;
 import com.etnopolino.HotelServer.service.mailing.MailService;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityExistsException;
-import lombok.RequiredArgsConstructor;
+import lombok.AllArgsConstructor;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,7 +30,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
+@AllArgsConstructor
 @Transactional // forced to used transactional or else we cant enable our customer when the email is sent by email
 public class AuthServiceImpl implements AuthService{
 
@@ -30,6 +38,8 @@ public class AuthServiceImpl implements AuthService{
     private final PasswordEncoder passwordEncoder;
     private final VerificationTokenRepository verificationTokenRepository;
     private final MailService mailService;
+    private final AuthenticationManager authenticationManager;
+    private final JwtProvider jwtProvider;
 
     @PostConstruct
     public void createAdminAccount(){
@@ -53,6 +63,7 @@ public class AuthServiceImpl implements AuthService{
     }
 
     @Override
+    @Transactional //interacting with relational database
     public void signUpUser(SignupRequest signupRequest) {
 
         if(userRepository.findFirstByEmail(signupRequest.getEmail()).isPresent()){
@@ -87,6 +98,30 @@ public class AuthServiceImpl implements AuthService{
         return userRepository.findFirstByEmail(email).isPresent();
     }
 
+    @Override
+    public AuthenticateResponse login(LoginRequest loginRequest){
+
+        Authentication authenticate = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
+        SecurityContextHolder.getContext().setAuthentication(authenticate); //si on veut savoir si un user est lohin ou non, on rgarde juste le securityContext pour l'authentification
+        String token = jwtProvider.generateToken(authenticate);
+        Optional<User> optionalUser = userRepository.findFirstByEmail(loginRequest.getEmail());
+
+        if(optionalUser.isPresent() && optionalUser.get().isEnabled()){
+            return AuthenticateResponse.builder()
+                    .authenticateToken(token)
+                    .userId(optionalUser.get().getId())
+                    .username(optionalUser.get().getUsername())
+                    .expiresAt(Instant.now().plusMillis(200000))
+                    .build();
+        }
+
+        throw new SpringHotelException("User either doesnt exist or isnt activated");
+    }
+
+
+
+//-------------- private method ----------------------------------------------------------
+
     private String generateVerifyToken(User user) {
         String token = UUID.randomUUID().toString();
         VerificationToken verificationToken = new VerificationToken(); //we define a new verification token for each user created
@@ -96,6 +131,7 @@ public class AuthServiceImpl implements AuthService{
 
         return token;
     }
+
     @Transactional
     private void fetchUserAndEnable(VerificationToken verificationToken) {
         String emailUser = verificationToken.getUser().getUsername();  //username here is the email..
@@ -103,7 +139,9 @@ public class AuthServiceImpl implements AuthService{
                                   .orElseThrow( ()-> new SpringHotelException("User not found with email of "+emailUser));
 
         user.setEnabled(true);
+        userRepository.save(user);
     }
+
 
 
 }
